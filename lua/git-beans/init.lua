@@ -1,29 +1,30 @@
-local m_config = {
+local cmds = {
     git = "git",
-    gitlog = "git log --graph --abbrev-commit --decorate --date=relative --all",
+    gitlog = "git log --oneline --graph --abbrev-commit --decorate --date=relative --all",
 }
 
 local M = {}
 
-function M.initialize()
-    M.setup()
-end
+---@class GitBeansCommand
+---@field impl fun(args:string[], opts: table)
+---@field complete? fun(arg_lead: string): string[] (optional)
 
----@type Config
-M.config = m_config
-
-M.execute = function()
-    vim.api.nvim_create_user_command("Hello", function()
-        print("Hello World")
-    end, {})
-
-    vim.api.nvim_create_user_command("GitBeans", function()
-        M.open_hello_window()
-    end, {})
-end
+---@type table<string, GitBeansCommand>
+M.command = {
+    Hello = {
+        impl = function(args, opts)
+            print("Hello World")
+        end,
+    },
+    Log = {
+        impl = function(args, opts)
+            M.open_hello_window()
+        end,
+    },
+}
 
 local function GitLog()
-    local result = vim.fn.systemlist(M.config.gitlog)
+    local result = vim.fn.systemlist(cmds.gitlog)
     if vim.v.shell_error ~= 0 then
         result = { "Error running git log.", unpack(result) }
     elseif #result == 0 then
@@ -32,13 +33,13 @@ local function GitLog()
     return result
 end
 
-function M.open_hello_window(message)
+function M.open_hello_window()
     local buf = vim.api.nvim_create_buf(false, true)
     local log = GitLog()
     vim.api.nvim_buf_set_lines(buf, 0, -1, false, log)
-    vim.api.nvim_buf_set_option(buf, "modifiable", false)
-    vim.api.nvim_buf_set_option(buf, "bufhidden", "wipe")
-    vim.api.nvim_buf_set_option(buf, "filetype", "git")
+    vim.api.nvim_set_option_value("modifiable", false, { buf = buf })
+    vim.api.nvim_set_option_value("bufhidden", "wipe", { buf = buf })
+    vim.api.nvim_set_option_value("filetype", "git", { buf = buf })
     local height = math.min(#log, 20)
     local width = 100
     local ui = vim.api.nvim_list_uis()[1]
@@ -51,7 +52,9 @@ function M.open_hello_window(message)
         row = row,
         col = col,
         style = "minimal",
-        border = "rounded",
+        border = vim.g.git_beans.border_chars,
+        title = " Git Log ",
+        title_pos = "center",
     }
     local win = vim.api.nvim_open_win(buf, true, win_opts)
     vim.keymap.set("n", 'q', function()
@@ -59,9 +62,8 @@ function M.open_hello_window(message)
     end, { buffer = buf, nowait = true })
 end
 
-M.setup = function(args)
-    M.config = vim.tbl_deep_extend("force", M.config, args or {})
-    M.execute()
+function M.setup(opts)
+    M.config = vim.tbl_deep_extend("force", M.config, opts or {})
 end
-
+print("Loaded GitBeans")
 return M
