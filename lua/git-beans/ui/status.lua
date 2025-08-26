@@ -49,12 +49,14 @@ function M.open_git_status()
         end,
         desc = "Close status window when diff is closed",
     })
-    vim.schedule(function ()
-        local lines = core.git.status_list(source_buf)
-        local visual_lines = core.git.status_list_visual(lines, source_buf)
+    vim.api.nvim_set_current_win(status_win)
+    vim.async.void(function()
+        local lines = await(core.git.status_list(source_buf))
+        local visual_lines = await(core.git.status_list_visual(lines, source_buf))
         vim.api.nvim_set_option_value("modifiable", true, { buf = status_buf })
         core.window.push_window(visual_lines.lines, status_opts, true)
         vim.api.nvim_set_option_value("modifiable", false, { buf = status_buf })
+        vim.api.nvim_set_current_win(status_win)
 
         vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
             buffer = status_buf,
@@ -87,13 +89,15 @@ function M.open_git_status()
                     else
                         return
                     end
-                    core.git.run_git(diff_cmd, function(output)
-                        vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
+                    vim.async.void(function()
+                        local result = await(core.git.run_git(diff_cmd, source_buf))
+                        local output = result.stdout or ""
                         local diff_lines = vim.split(output, "\n", { trimempty = true })
                         if output == "" then diff_lines = { "File not tracked" } end
+                        vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
                         vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, diff_lines)
                         vim.api.nvim_set_option_value("modifiable", false, { buf = diff_buf })
-                    end, nil, source_buf)
+                    end)()
                 else
                     vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
                     vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, { "No file selected" })

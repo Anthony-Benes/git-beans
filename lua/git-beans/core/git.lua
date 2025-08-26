@@ -19,53 +19,39 @@ function M.get_cwd(use_root, bufnr)
     end
 end
 
----Run a Git command using `vim.system`.
----@param args string|string[] Git arguments (string or list of strings)
----@param callback fun(output: string)|nil Callback function receiving Git output
----@param async? boolean Run command with async
----@param bufnr? number Number of buffer command is run from
----@return string result Command result if not async, do not use if async.
-function M.run_git(args, callback, async, bufnr)
+M.run_git = vim.async.wrap(function(args, bufnr, cb)
   if type(args) == "string" then
       args = vim.split(args, "%s+")
   end
   local command = vim.iter({ "git", args }):flatten():totable()
   local options = { text = true, cwd = M.get_cwd(nil, bufnr) }
-  local function handle_result(result)
-    local output = result.stdout or result.stderr or "No output from git"
-    if result.code ~= 0 then output = "Not a Git repository" end
-    if callback then callback(output) end
-    return output
-  end
-  if async == false then
-    local result = vim.system(command, options):wait()
-    return handle_result(result)
-  else
     vim.system(command, options, function(result)
-      vim.schedule(function()
-        handle_result(result)
-      end)
+        cb(result)
     end)
-    return "RUNNING IN ASYNC"
-  end
-end
+end, 3)
 
 function M.add_file(file_list, callback, bufnr)
-    local file_set = vim.iter({"add", file_list}):flatten():totable()
-    M.run_git(file_set, callback, true, bufnr)
+    vim.async.void(function()
+        local file_set = vim.iter({"add", file_list}):flatten():totable()
+        local result = await(M.run_git(file_set, bufnr, callback))
+        print(result.stdout)
+    end)()
 end
 
 ---@param bufnr? number Number of buffer command is run from
 ---@return string
-function M.status_short(bufnr)
-    local result = M.run_git({ "status", "--porcelain=v2", "--branch" }, nil, false, bufnr)
-    return result
-end
+M.status_short = vim.async.fn(function(bufnr)
+    local result = await(M.run_git({ "status", "--porcelain=v2", "--branch" }, bufnr))
+    local output = result.stdout or result.stderr or "No output from git"
+    if result.code ~= 0 then output = "Not a Git repository" end
+    return output
+end)
 
 ---@param bufnr? number Number of buffer command is run from
 ---@return table
-function M.status_list(bufnr)
-    local status = vim.split(M.status_short(bufnr), "\n", { trimempty = true })
+M.status_list = vim.async.fn(function(bufnr)
+    local output = await(M.status_short(bufnr))
+    local status = vim.split(output.stdout or "", "\n", { trimempty = true })
     local data = {
         branch = {
             head = nil,
@@ -112,13 +98,13 @@ function M.status_list(bufnr)
         end
     end
     return data
-end
+end)
 
 ---@param data? table
 ---@param bufnr? number Number of buffer command is run from
 ---@return string[]
-function M.status_list_visual(data, bufnr)
-    local status = data or M.status_list(bufnr)
+M.status_list_visual = vim.async.fn(function(data, bufnr)
+    local status = data or await(M.status_list(bufnr)).stdout
     local xyChar = {
         ['M'] = '󰏫',
         ['T'] = '󰤌',
@@ -224,6 +210,6 @@ function M.status_list_visual(data, bufnr)
     vim.list_extend(result.lines, untracked_lines)
     vim.list_extend(result.paths, untracked_paths)
     return result
-end
+end)
 
 return M
