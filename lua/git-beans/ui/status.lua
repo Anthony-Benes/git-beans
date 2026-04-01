@@ -50,62 +50,58 @@ function M.open_git_status()
         desc = "Close status window when diff is closed",
     })
     vim.api.nvim_set_current_win(status_win)
-    vim.async.void(function()
-        local lines = await(core.git.status_list(source_buf))
-        local visual_lines = await(core.git.status_list_visual(lines, source_buf))
-        vim.api.nvim_set_option_value("modifiable", true, { buf = status_buf })
-        core.window.push_window(visual_lines.lines, status_opts, true)
-        vim.api.nvim_set_option_value("modifiable", false, { buf = status_buf })
-        vim.api.nvim_set_current_win(status_win)
+    local lines = core.git.status_list(source_buf)
+    local visual_lines = core.git.status_list_visual(lines, source_buf)
+    vim.api.nvim_set_option_value("modifiable", true, { buf = status_buf })
+    core.window.push_window(visual_lines.lines, status_opts, true)
+    vim.api.nvim_set_option_value("modifiable", false, { buf = status_buf })
+    vim.api.nvim_set_current_win(status_win)
 
-        vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
-            buffer = status_buf,
-            callback = function()
-                local cursor = vim.api.nvim_win_get_cursor(0)
-                local row = cursor[1]
-                local path = visual_lines.paths[row]
-                local staged, unstaged, untracked = nil, nil, nil
-                for index, value in ipairs(visual_lines.lines) do
-                    if value == "Staged:" then
-                        staged = index
-                        if unstaged ~= nil and untracked ~= nil then break end
-                    end
-                    if value == "Unstaged:" then
-                        unstaged = index
-                        if staged ~= nil and untracked ~= nil then break end
-                    end
-                    if value == "Not Tracked:" then
-                        untracked = index
-                        if unstaged ~= nil and staged ~= nil then break end
-                    end
+    vim.api.nvim_create_autocmd({ "CursorMoved", "CursorMovedI" }, {
+        buffer = status_buf,
+        callback = function()
+            local cursor = vim.api.nvim_win_get_cursor(0)
+            local row = cursor[1]
+            local path = visual_lines.paths[row]
+            local staged, unstaged, untracked = nil, nil, nil
+            for index, value in ipairs(visual_lines.lines) do
+                if value == "Staged:" then
+                    staged = index
+                    if unstaged ~= nil and untracked ~= nil then break end
                 end
-                if path and path ~= "" then
-                    path = path:gsub(".*", "")
-                    local diff_cmd
-                    if row > staged and row < unstaged then
-                        diff_cmd = { "diff", "--cached", "--", path }
-                    elseif row > unstaged and row < untracked then
-                        diff_cmd = { "diff", "--", path }
-                    else
-                        return
-                    end
-                    vim.async.void(function()
-                        local result = await(core.git.run_git(diff_cmd, source_buf))
-                        local output = result.stdout or ""
-                        local diff_lines = vim.split(output, "\n", { trimempty = true })
-                        if output == "" then diff_lines = { "File not tracked" } end
-                        vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
-                        vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, diff_lines)
-                        vim.api.nvim_set_option_value("modifiable", false, { buf = diff_buf })
-                    end)()
+                if value == "Unstaged:" then
+                    unstaged = index
+                    if staged ~= nil and untracked ~= nil then break end
+                end
+                if value == "Not Tracked:" then
+                    untracked = index
+                    if unstaged ~= nil and staged ~= nil then break end
+                end
+            end
+            if path and path ~= "" then
+                path = path:gsub(".*", "")
+                local diff_cmd
+                if row > staged and row < unstaged then
+                    diff_cmd = { "diff", "--cached", "--", path }
+                elseif row > unstaged and row < untracked then
+                    diff_cmd = { "diff", "--", path }
                 else
-                    vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
-                    vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, { "No file selected" })
-                    vim.api.nvim_set_option_value("modifiable", false, { buf = diff_buf })
+                    return
                 end
-            end,
-        })
-    end)
+                local result = core.git.run_git(diff_cmd, source_buf)
+                local output = result.stdout or ""
+                local diff_lines = vim.split(output, "\n", { trimempty = true })
+                if output == "" then diff_lines = { "File not tracked" } end
+                vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
+                vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, diff_lines)
+                vim.api.nvim_set_option_value("modifiable", false, { buf = diff_buf })
+            else
+                vim.api.nvim_set_option_value("modifiable", true, { buf = diff_buf })
+                vim.api.nvim_buf_set_lines(diff_buf, 0, -1, false, { "No file selected" })
+                vim.api.nvim_set_option_value("modifiable", false, { buf = diff_buf })
+            end
+        end,
+    })
 end
 
 return M

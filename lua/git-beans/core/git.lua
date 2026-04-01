@@ -9,7 +9,9 @@ function M.get_cwd(use_root, bufnr)
     if root then
         return vim.fn.getcwd()
     else
-        bufnr = bufnr or 0
+        if type(bufnr) ~= "number" then
+            bufnr = 0
+        end
         local bufname = vim.api.nvim_buf_get_name(bufnr)
         if bufname == "" then
             return vim.fn.getcwd()
@@ -19,39 +21,39 @@ function M.get_cwd(use_root, bufnr)
     end
 end
 
-M.run_git = vim.async.wrap(function(args, bufnr, cb)
+M.run_git = function(args, bufnr)
   if type(args) == "string" then
       args = vim.split(args, "%s+")
   end
   local command = vim.iter({ "git", args }):flatten():totable()
   local options = { text = true, cwd = M.get_cwd(nil, bufnr) }
-    vim.system(command, options, function(result)
-        cb(result)
-    end)
-end, 3)
+  return vim.system(command, options):wait()
+end
 
 function M.add_file(file_list, callback, bufnr)
-    vim.async.void(function()
-        local file_set = vim.iter({"add", file_list}):flatten():totable()
-        local result = await(M.run_git(file_set, bufnr, callback))
-        print(result.stdout)
-    end)()
+    local file_set = vim.iter({"add", file_list}):flatten():totable()
+    local result = M.run_git(file_set, bufnr)
+
+    if callback then
+        callback(result)
+    end
+    print(result.stdout)
 end
 
 ---@param bufnr? number Number of buffer command is run from
 ---@return string
-M.status_short = vim.async.fn(function(bufnr)
-    local result = await(M.run_git({ "status", "--porcelain=v2", "--branch" }, bufnr))
+M.status_short = function(bufnr)
+    local result = M.run_git({ "status", "--porcelain=v2", "--branch" }, bufnr)
     local output = result.stdout or result.stderr or "No output from git"
     if result.code ~= 0 then output = "Not a Git repository" end
     return output
-end)
+end
 
 ---@param bufnr? number Number of buffer command is run from
 ---@return table
-M.status_list = vim.async.fn(function(bufnr)
-    local output = await(M.status_short(bufnr))
-    local status = vim.split(output.stdout or "", "\n", { trimempty = true })
+M.status_list = function(bufnr)
+    local output = M.status_short(bufnr)
+    local status = vim.split(output or "", "\n", { trimempty = true })
     local data = {
         branch = {
             head = nil,
@@ -98,13 +100,13 @@ M.status_list = vim.async.fn(function(bufnr)
         end
     end
     return data
-end)
+end
 
 ---@param data? table
 ---@param bufnr? number Number of buffer command is run from
 ---@return string[]
-M.status_list_visual = vim.async.fn(function(data, bufnr)
-    local status = data or await(M.status_list(bufnr)).stdout
+M.status_list_visual = function(data, bufnr)
+    local status = data or M.status_list(bufnr)
     local xyChar = {
         ['M'] = '󰏫',
         ['T'] = '󰤌',
@@ -210,6 +212,6 @@ M.status_list_visual = vim.async.fn(function(data, bufnr)
     vim.list_extend(result.lines, untracked_lines)
     vim.list_extend(result.paths, untracked_paths)
     return result
-end)
+end
 
 return M
