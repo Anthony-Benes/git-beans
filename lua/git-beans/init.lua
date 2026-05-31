@@ -6,16 +6,8 @@ local M = {}
 
 ---@type table<string, GitBeansCommand>
 M.command = {
-    Status = {
-        impl = function(args, opts)
-            require("git-beans.ui.status").open_git_status()
-        end,
-    },
-    Log = {
-        impl = function(args, opts)
-            require("git-beans.ui.log").open_git_log()
-        end,
-    },
+    status = require("git-beans.commands.status"),
+    log = require("git-beans.commands.log"),
 }
 
 return M

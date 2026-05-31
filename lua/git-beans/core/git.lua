@@ -16,17 +16,26 @@ function M.get_cwd(use_root, bufnr)
         if bufname == "" then
             return vim.fn.getcwd()
         else
-            return vim.fn.fnamemodify(bufname, ":h")
+            local path = vim.fn.fnamemodify(bufname, ":h")
+            local result = vim.system({ "git", "-C", path, "rev-parse", "--show-toplevel" }, {text = true}):wait()
+            if result.code ~= 0 then
+                return path
+            end
+            return vim.trim(result.stdout)
         end
     end
 end
 
 M.run_git = function(args, bufnr)
+  local git_at_root = false
+  if not bufnr then
+      git_at_root = true
+  end
   if type(args) == "string" then
       args = vim.split(args, "%s+")
   end
   local command = vim.iter({ "git", args }):flatten():totable()
-  local options = { text = true, cwd = M.get_cwd(nil, bufnr) }
+  local options = { text = true, cwd = M.get_cwd(git_at_root, bufnr) }
   return vim.system(command, options):wait()
 end
 
@@ -43,7 +52,7 @@ end
 ---@param bufnr? number Number of buffer command is run from
 ---@return string
 M.status_short = function(bufnr)
-    local result = M.run_git({ "status", "--porcelain=v2", "--branch" }, bufnr)
+    local result = M.run_git({ "status", "--porcelain=v2", "--branch", "--untracked-files=all" }, bufnr)
     local output = result.stdout or result.stderr or "No output from git"
     if result.code ~= 0 then output = "Not a Git repository" end
     return output
